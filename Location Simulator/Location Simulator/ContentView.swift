@@ -146,6 +146,13 @@ struct DeveloperDetailsView: View {
         }
         return "https://bandan-kumar.vercel.app"
     }
+    private var developerGitHub: String {
+        // Placeholder until set in Info or updated later
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "DeveloperGitHub") as? String, !raw.isEmpty {
+            return raw
+        }
+        return "—" // set your GitHub URL once available
+    }
 
     var body: some View {
         ScrollView {
@@ -194,6 +201,19 @@ struct DeveloperDetailsView: View {
                             }
                         } else {
                             LabeledRow(label: "Website", value: developerWebsite)
+                        }
+                        if developerGitHub != "—", let gh = URL(string: developerGitHub) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text("GitHub")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 110, alignment: .leading)
+                                Link(developerGitHub, destination: gh)
+                                    .font(.subheadline)
+                                Spacer()
+                            }
+                        } else {
+                            LabeledRow(label: "GitHub", value: developerGitHub)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
