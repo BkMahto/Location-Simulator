@@ -70,7 +70,7 @@ struct ContentView: View {
                         
                         TextField("Enter start address", text: $startAddress)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .onChange(of: startAddress) { _ in
+                            .onChange(of: startAddress) {
                                 if suppressStartSearch {
                                     suppressStartSearch = false
                                     isSearchingStart = false
@@ -116,7 +116,7 @@ struct ContentView: View {
                         
                         TextField("Enter end address", text: $endAddress)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .onChange(of: endAddress) { _ in
+                            .onChange(of: endAddress) {
                                 if suppressEndSearch {
                                     suppressEndSearch = false
                                     isSearchingEnd = false
@@ -163,7 +163,7 @@ struct ContentView: View {
                         
                         TextField("Enter address", text: $singleAddress)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .onChange(of: singleAddress) { _ in
+                            .onChange(of: singleAddress) {
                                 if suppressSingleSearch {
                                     suppressSingleSearch = false
                                     isSearchingSingle = false
@@ -227,7 +227,7 @@ struct ContentView: View {
             
             // Control buttons
             VStack(spacing: 12) {
-                HStack(spacing: 20) {
+                HStack(spacing: 12) {
                     Button(action: {
                         isPathMode.toggle()
                     }) {
@@ -235,12 +235,24 @@ struct ContentView: View {
                             Image(systemName: isPathMode ? "line.diagonal" : "plus.circle")
                             Text(isPathMode ? "Exit Path Mode" : "Create Path")
                         }
-                        .padding()
-                        .background(isPathMode ? Color.red : Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(isPathMode ? .red : .blue)
                     
+                    Button(action: {
+                        if let r = route {
+                            let rect = r.polyline.boundingMapRect
+                            let fitted = MKCoordinateRegion(rect)
+                            region = fitted
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "rectangle.and.arrow.up.right.and.arrow.down.left")
+                            Text("Fit to Route")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+
                     Button(action: {
                         // Enable a single click to pick a point
                         selectedEndLocation = nil
@@ -252,11 +264,9 @@ struct ContentView: View {
                             Image(systemName: "mappin")
                             Text("Pick Point")
                         }
-                        .padding()
-                        .background(Color.orange)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
                     
                     Button(action: {
                         calculateRoute()
@@ -273,12 +283,10 @@ struct ContentView: View {
                             }
                             Text("Calculate Route")
                         }
-                        .padding()
-                        .background(selectedStartLocation != nil && selectedEndLocation != nil ? Color.orange : Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
                     }
                     .disabled(selectedStartLocation == nil || selectedEndLocation == nil || isCalculatingRoute)
+                    .buttonStyle(.borderedProminent)
+                    .tint((selectedStartLocation != nil && selectedEndLocation != nil) ? .orange : .gray)
                     
                     Button(action: {
                         clearSelections()
@@ -287,14 +295,11 @@ struct ContentView: View {
                             Image(systemName: "trash")
                             Text("Clear")
                         }
-                        .padding()
-                        .background(Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
                     }
+                    .buttonStyle(.bordered)
                 }
                 
-                HStack(spacing: 20) {
+                HStack(spacing: 12) {
                     Button(action: {
                         exportWaypointGPX()
                     }) {
@@ -302,12 +307,10 @@ struct ContentView: View {
                             Image(systemName: "smallcircle.filled.circle")
                             Text("Export Point GPX")
                         }
-                        .padding()
-                        .background((selectedStartLocation != nil || selectedEndLocation != nil) ? Color.green : Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
                     }
                     .disabled(selectedStartLocation == nil && selectedEndLocation == nil)
+                    .buttonStyle(.borderedProminent)
+                    .tint((selectedStartLocation != nil || selectedEndLocation != nil) ? .green : .gray)
                     
                     Button(action: {
                         exportGPX()
@@ -316,12 +319,10 @@ struct ContentView: View {
                             Image(systemName: "square.and.arrow.up")
                             Text("Export GPX")
                         }
-                        .padding()
-                        .background(route != nil ? Color.green : Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
                     }
                     .disabled(route == nil)
+                    .buttonStyle(.borderedProminent)
+                    .tint(route != nil ? .green : .gray)
                     
                     Button(action: {
                         clearMap()
@@ -330,11 +331,9 @@ struct ContentView: View {
                             Image(systemName: "map")
                             Text("Clear Map")
                         }
-                        .padding()
-                        .background(Color.purple)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
                     }
+                    .buttonStyle(.bordered)
+                    .tint(.purple)
                 }
             }
             .padding()
@@ -442,6 +441,8 @@ struct ContentView: View {
         guard let start = selectedStartLocation, let end = selectedEndLocation else { return }
         
         isCalculatingRoute = true
+        // Ensure addresses are present for UI/filenames
+        fillAddressesIfMissing(start: start, end: end)
         
         let startPlacemark = MKPlacemark(coordinate: start)
         let endPlacemark = MKPlacemark(coordinate: end)
@@ -461,13 +462,43 @@ struct ContentView: View {
                 
                 if let route = response?.routes.first {
                     self.route = route
-                    
-                    // Update map region to show the entire route
-                    let rect = route.polyline.boundingMapRect
-                    let region = MKCoordinateRegion(rect)
-                    self.region = region
+                    // Do not auto-recenter; let user choose via "Fit to Route"
+                    // Keep two-field mode when a route exists
+                    if self.selectedStartLocation != nil && self.selectedEndLocation != nil {
+                        self.isTwoFieldMode = true
+                    }
                 } else if let error = error {
                     print("Route calculation error: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func fillAddressesIfMissing(start: CLLocationCoordinate2D, end: CLLocationCoordinate2D) {
+        let geocoder = CLGeocoder()
+        if startAddress.isEmpty {
+            geocoder.reverseGeocodeLocation(CLLocation(latitude: start.latitude, longitude: start.longitude)) { placemarks, _ in
+                if let p = placemarks?.first {
+                    let parts: [String] = [p.name, p.locality, p.administrativeArea].compactMap { $0 }
+                    let title = parts.first ?? "Start"
+                    DispatchQueue.main.async {
+                        self.startAddress = title
+                        self.suppressStartSearch = true
+                        self.isSearchingStart = false
+                    }
+                }
+            }
+        }
+        if endAddress.isEmpty {
+            geocoder.reverseGeocodeLocation(CLLocation(latitude: end.latitude, longitude: end.longitude)) { placemarks, _ in
+                if let p = placemarks?.first {
+                    let parts: [String] = [p.name, p.locality, p.administrativeArea].compactMap { $0 }
+                    let title = parts.first ?? "End"
+                    DispatchQueue.main.async {
+                        self.endAddress = title
+                        self.suppressEndSearch = true
+                        self.isSearchingEnd = false
+                    }
                 }
             }
         }
@@ -508,7 +539,8 @@ struct ContentView: View {
     private func exportGPX() {
         guard let route = route else { return }
         
-        let gpxString = generateGPXString(route: route)
+        // Use waypoint-based GPX with increasing timestamps for best Xcode simulation
+        let gpxString = generateWaypointRouteGPX(route: route)
         let baseName: String
         if !startAddress.isEmpty && !endAddress.isEmpty {
             let s = startAddress.components(separatedBy: ",").first ?? startAddress
@@ -539,14 +571,16 @@ struct ContentView: View {
     }
     
     private func generateGPXString(route: MKRoute) -> String {
+        // Kept for future use: track-based export (not default)
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         let timestamp = formatter.string(from: Date())
         
         var gpxString = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <gpx version="1.1" creator="GPX Creator" xmlns="http://www.topografix.com/GPX/1/1">
+        <?xml version=\"1.0\" encoding=\"UTF-8\"?>
+        <gpx version=\"1.1\" creator=\"GPX Creator • Bandan Kumar Mahto\" xmlns=\"http://www.topografix.com/GPX/1/1\"> 
+            <!-- Generated by GPX Creator (Author: Bandan Kumar Mahto) -->
             <metadata>
                 <name>Route from \(startAddress) to \(endAddress)</name>
                 <time>\(timestamp)</time>
@@ -556,7 +590,6 @@ struct ContentView: View {
                 <trkseg>
         """
         
-        // Add track points along the route
         let pointCount = route.polyline.pointCount
         let points = route.polyline.points()
         
@@ -564,10 +597,9 @@ struct ContentView: View {
             let point = points[i]
             let lat = point.coordinate.latitude
             let lon = point.coordinate.longitude
-            
             gpxString += """
-                    <trkpt lat="\(lat)" lon="\(lon)">
-                        <time>\(timestamp)</time>
+                    <trkpt lat=\"\(lat)\" lon=\"\(lon)\"> 
+                        <time>\(timestamp)</time> 
                     </trkpt>
             """
         }
@@ -577,8 +609,77 @@ struct ContentView: View {
             </trk>
         </gpx>
         """
-        
         return gpxString
+    }
+
+    private func generateWaypointRouteGPX(route: MKRoute) -> String {
+        // Build a sequence of waypoints with increasing timestamps
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.formatOptions = [.withInternetDateTime]
+        var currentTime = Date()
+        
+        // Downsample polyline points to a reasonable count
+        let coordinates = sampledCoordinates(from: route.polyline, maxPoints: 200)
+        
+        var gpx = """
+        <?xml version=\"1.0\"?>
+        <gpx version=\"1.1\" creator=\"GPX Creator • Bandan Kumar Mahto\" xmlns=\"http://www.topografix.com/GPX/1/1\"> 
+            <!-- Generated by GPX Creator (Author: Bandan Kumar Mahto) -->
+            <metadata>
+                <name>Route from \(startAddress) to \(endAddress)</name>
+                <time>\(formatter.string(from: currentTime))</time>
+            </metadata>
+        """
+        
+        // Emit as waypoints that Xcode will traverse
+        var previous: CLLocationCoordinate2D?
+        for coord in coordinates {
+            if let prev = previous {
+                // Increment time roughly proportional to distance (assume ~10 m/s)
+                let dist = distanceMeters(from: prev, to: coord)
+                let seconds = max(1, Int(dist / 10.0))
+                currentTime.addTimeInterval(TimeInterval(seconds))
+            }
+            previous = coord
+            gpx += """
+            <wpt lat=\"\(coord.latitude)\" lon=\"\(coord.longitude)\"> 
+                <time>\(formatter.string(from: currentTime))</time> 
+            </wpt>
+            """
+        }
+        
+        gpx += "\n</gpx>\n"
+        return gpx
+    }
+
+    private func sampledCoordinates(from polyline: MKPolyline, maxPoints: Int) -> [CLLocationCoordinate2D] {
+        let count = polyline.pointCount
+        guard count > 0 else { return [] }
+        let points = polyline.points()
+        var coords: [CLLocationCoordinate2D] = []
+        coords.reserveCapacity(min(count, maxPoints))
+        if count <= maxPoints {
+            for i in 0..<count { coords.append(points[i].coordinate) }
+            return coords
+        }
+        let step = max(1, count / maxPoints)
+        var i = 0
+        while i < count {
+            coords.append(points[i].coordinate)
+            i += step
+        }
+        // Ensure last point is included
+        if coords.last?.latitude != points[count - 1].coordinate.latitude || coords.last?.longitude != points[count - 1].coordinate.longitude {
+            coords.append(points[count - 1].coordinate)
+        }
+        return coords
+    }
+
+    private func distanceMeters(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) -> Double {
+        let locA = CLLocation(latitude: a.latitude, longitude: a.longitude)
+        let locB = CLLocation(latitude: b.latitude, longitude: b.longitude)
+        return locA.distance(from: locB)
     }
     
     private func exportWaypointGPX() {
@@ -764,10 +865,7 @@ struct MapView: NSViewRepresentable {
                 parent.selectedEndLocation = coordinate
                 parent.isPathMode = false
             }
-            // Recenter region around the chosen coordinate to avoid jumping elsewhere
-            let span = MKCoordinateSpan(latitudeDelta: max(0.02, parent.region.span.latitudeDelta),
-                                        longitudeDelta: max(0.02, parent.region.span.longitudeDelta))
-            parent.region = MKCoordinateRegion(center: coordinate, span: span)
+            // Do not force recenter; keep current camera
         }
     }
 }

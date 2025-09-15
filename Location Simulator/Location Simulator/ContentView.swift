@@ -215,6 +215,17 @@ struct DeveloperDetailsView: View {
                         } else {
                             LabeledRow(label: "GitHub", value: developerGitHub)
                         }
+                        Divider()
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Credit")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 110, alignment: .leading)
+                            Text("Developed with AI assistance (Cursor)")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
