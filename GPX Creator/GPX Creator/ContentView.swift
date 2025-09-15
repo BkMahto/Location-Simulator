@@ -541,6 +541,7 @@ struct ContentView: View {
     private func generateGPXString(route: MKRoute) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         let timestamp = formatter.string(from: Date())
         
         var gpxString = """
@@ -587,6 +588,7 @@ struct ContentView: View {
         
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
         let timestamp = formatter.string(from: Date())
         
         let name = !singleAddress.isEmpty ? singleAddress : (!endAddress.isEmpty ? endAddress : (!startAddress.isEmpty ? startAddress : "Waypoint"))
