@@ -1,117 +1,16 @@
 //
-//  ContentView.swift
+//  DeveloperDetailsView.swift
 //  Location Simulator
 //
-//  Created by Bandan.K on 15/09/25.
+//  Created by Bandan.K on 07/11/25.
 //
 
 import SwiftUI
 
-struct ContentView: View {
-    var body: some View {
-        TabView {
-            // MARK: Info Tab
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .center, spacing: 12) {
-                        Image(systemName: "location.circle.fill")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.blue)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Location Simulator")
-                                .font(.title2).bold()
-                            Text("Debug helper for simulating GPS via Xcode")
-                                .foregroundStyle(.secondary)
-                                .font(.subheadline)
-                        }
-                        Spacer()
-                        Text("DEBUG")
-                            .font(.caption2).bold()
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.yellow.opacity(0.2))
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.yellow.opacity(0.6), lineWidth: 1)
-                            )
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("How to use")
-                            .font(.headline)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Label {
-                                Text("Run this app from Xcode on a simulator or device.")
-                            } icon: { Image(systemName: "1.circle.fill").foregroundStyle(.secondary) }
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Choose a GPX route:")
-                                    Text("Debug > Simulate Location > [Pick GPX]")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text("or set a GPX under the scheme’s Location settings.")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            } icon: { Image(systemName: "2.circle.fill").foregroundStyle(.secondary) }
-                            Label {
-                                Text("Keep this app running (foreground or background). Do not force quit.")
-                            } icon: { Image(systemName: "3.circle.fill").foregroundStyle(.secondary) }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Notes")
-                            .font(.headline)
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "info.circle").foregroundStyle(.secondary)
-                                Text("This is a workaround: iOS only allows mock locations through Xcode while debugging.")
-                            }
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle").foregroundStyle(.secondary)
-                                Text("Killing the app stops the simulation. Keep it running during tests.")
-                            }
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "gear").foregroundStyle(.secondary)
-                                Text("If nothing happens, ensure the scheme has Location Simulation enabled and a GPX is selected.")
-                            }
-                        }
-                    }
-
-                    Spacer(minLength: 8)
-                    Text("Made for internal testing and development.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .padding()
-            }
-            .tabItem {
-                Label("Info", systemImage: "info.circle")
-            }
-
-            // MARK: Developer Tab
-            DeveloperDetailsView()
-                .tabItem {
-                    Label("Developer", systemImage: "wrench.and.screwdriver")
-                }
-        }
-    }
-}
-
-#Preview {
-    ContentView()
-}
-
-// MARK: - Developer Details View
 struct DeveloperDetailsView: View {
     private var appName: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ??
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ??
-        "Location Simulator"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName")
+            as? String ?? "Location Simulator"
     }
     private var bundleId: String { Bundle.main.bundleIdentifier ?? "—" }
     private var version: String {
@@ -121,16 +20,16 @@ struct DeveloperDetailsView: View {
     }
     private var deviceInfo: String {
         #if targetEnvironment(simulator)
-        return "Simulator"
+            return "Simulator"
         #else
-        return UIDevice.current.model + " • iOS " + UIDevice.current.systemVersion
+            return UIDevice.current.model + " • iOS " + UIDevice.current.systemVersion
         #endif
     }
     private var isDebug: Bool {
         #if DEBUG
-        return true
+            return true
         #else
-        return false
+            return false
         #endif
     }
     // Developer-provided metadata (configure in target Info as user-defined keys)
@@ -151,7 +50,7 @@ struct DeveloperDetailsView: View {
         if let raw = Bundle.main.object(forInfoDictionaryKey: "DeveloperGitHub") as? String, !raw.isEmpty {
             return raw
         }
-        return "—" // set your GitHub URL once available
+        return "—"  // set your GitHub URL once available
     }
 
     var body: some View {
@@ -221,7 +120,7 @@ struct DeveloperDetailsView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .frame(width: 110, alignment: .leading)
-                            Text("Developed with AI assistance (Cursor)")
+                            Text("Developed with AI assistance (Cursor & ChatGPT)")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -235,7 +134,7 @@ struct DeveloperDetailsView: View {
                         Text("Tips")
                             .font(.headline)
                         Text("• Ensure the scheme has a GPX selected or use Debug → Simulate Location.")
-                        Text("• Keep the app alive; killing it stops the simulated feed.")
+                        Text("• Keep the app alive; killing it might stops the simulated feed.")
                         Text("• Some apps cache location; consider restarting the target app under test.")
                     }
                 }
