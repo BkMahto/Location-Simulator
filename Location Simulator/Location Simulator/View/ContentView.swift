@@ -29,5 +29,3 @@ struct ContentView: View {
 #Preview {
     ContentView()
 }
-
-// MARK: - Developer Details View

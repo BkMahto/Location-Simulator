@@ -607,7 +607,7 @@ extension ContentView {
 
         var gpx = """
             <?xml version="1.0"?>
-            <gpx version="1.1" creator="GPX Creator • Bandan Kumar Mahto" xmlns="http://www.topografix.com/GPX/1/1">
+            <gpx version="1.1" creator="GPX Creator • Bandan Kumar Mahto">
                 <metadata>
                     <name>Route from \(startAddress) to \(endAddress)</name>
                     <time>\(formatter.string(from: currentTime))</time>
