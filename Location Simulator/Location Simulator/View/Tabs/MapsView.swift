@@ -5,13 +5,13 @@
 //  Created by Bandan.K on 07/11/25.
 //
 
-import SwiftUI
 import MapKit
+import SwiftUI
 
 struct MapsView: View {
     @StateObject private var locationManager = LocationManager()
     @State private var region = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090), // fallback (Apple HQ)
+        center: CLLocationCoordinate2D(latitude: 37.3349, longitude: -122.0090),
         span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
     )
 
@@ -22,8 +22,8 @@ struct MapsView: View {
                 .onAppear {
                     locationManager.requestLocation()
                 }
-                .onReceive(locationManager.$currentLocation.compactMap { $0 }) { coordinate in
-                    region.center = coordinate
+                .onReceive(locationManager.$currentLocation.dropFirst().compactMap { $0 }) { userCoordinate in
+                    updateRegion(to: userCoordinate)
                 }
 
             Button(action: focusOnUser) {
@@ -38,13 +38,13 @@ struct MapsView: View {
         }
     }
 
+    private func updateRegion(to userCoordinate: CLLocationCoordinate2D) {
+        region.center = userCoordinate
+    }
 
     private func focusOnUser() {
         guard let userCoordinate = locationManager.currentLocation else { return }
-        region = MKCoordinateRegion(
-            center: userCoordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-        )
+        updateRegion(to: userCoordinate)
     }
 }
 
@@ -56,14 +56,16 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = 1  // Update even for 1 meter movement
     }
 
     func requestLocation() {
         switch manager.authorizationStatus {
-        case .notDetermined:
+        case .notDetermined, .denied, .restricted:
             manager.requestWhenInUseAuthorization()
         case .authorizedWhenInUse, .authorizedAlways:
             manager.startUpdatingLocation()
+            manager.requestLocation()
         default:
             break
         }
@@ -76,7 +78,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         if status == .authorizedWhenInUse || status == .authorizedAlways {
             manager.startUpdatingLocation()
+            manager.requestLocation()
         }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Location error:", error.localizedDescription)
     }
 }
 
