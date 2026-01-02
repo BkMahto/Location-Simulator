@@ -5,139 +5,138 @@
 //  Created by Bandan.K on 15/09/25.
 //
 
-import SwiftUI
 import MapKit
+import SwiftUI
 
 struct AddressSearchView: View {
     @ObservedObject var viewModel: GPXCreatorViewModel
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack {
             if viewModel.appState.isTwoFieldMode {
-                twoFieldSearchView
+                // Two field mode: Start and End locations
+                locationSearchField(
+                    title: "Start Location",
+                    placeholder: "Enter start address",
+                    text: $viewModel.searchState.startAddress,
+                    isSearching: viewModel.searchState.isSearchingStart,
+                    searchResults: viewModel.searchState.startSearchResults,
+                    accessibilityLabel: "Start location search field",
+                    accessibilityHint: "Enter an address or location name to search for the starting point",
+                    suppressSearch: viewModel.searchState.suppressStartSearch,
+                    suppressBinding: $viewModel.searchState.suppressStartSearch,
+                    isSearchingBinding: $viewModel.searchState.isSearchingStart,
+                    isStart: true
+                )
+
+                locationSearchField(
+                    title: "End Location",
+                    placeholder: "Enter end address",
+                    text: $viewModel.searchState.endAddress,
+                    isSearching: viewModel.searchState.isSearchingEnd,
+                    searchResults: viewModel.searchState.endSearchResults,
+                    accessibilityLabel: "End location search field",
+                    accessibilityHint: "Enter an address or location name to search for the ending point",
+                    suppressSearch: viewModel.searchState.suppressEndSearch,
+                    suppressBinding: $viewModel.searchState.suppressEndSearch,
+                    isSearchingBinding: $viewModel.searchState.isSearchingEnd,
+                    isStart: false
+                )
             } else {
-                singleFieldSearchView
+                // Single field mode: Single location
+                locationSearchField(
+                    title: "Location",
+                    placeholder: "Enter address",
+                    text: $viewModel.searchState.startAddress,
+                    isSearching: viewModel.searchState.isSearchingStart,
+                    searchResults: viewModel.searchState.startSearchResults,
+                    accessibilityLabel: "Location search field",
+                    accessibilityHint: "Enter an address or location name to search for a single point",
+                    suppressSearch: viewModel.searchState.suppressStartSearch,
+                    suppressBinding: $viewModel.searchState.suppressStartSearch,
+                    isSearchingBinding: $viewModel.searchState.isSearchingStart,
+                    isStart: nil
+                )
             }
         }
-        .padding()
-        .background(Color(nsColor: .controlBackgroundColor))
+        //        .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private var twoFieldSearchView: some View {
-        VStack(spacing: 8) {
-            // Start Location
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Start Location")
-                        .font(.headline)
-                    Spacer()
-                }
-
-                TextField("Enter start address", text: $viewModel.searchState.startAddress)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .accessibilityLabel("Start location search field")
-                    .accessibilityHint("Enter an address or location name to search for the starting point")
-                    .onChange(of: viewModel.searchState.startAddress) { oldValue, newValue in
-                        if viewModel.searchState.suppressStartSearch {
-                            viewModel.searchState.suppressStartSearch = false
-                            viewModel.searchState.isSearchingStart = false
-                        } else {
-                            viewModel.searchForLocation(query: newValue, isStart: true)
-                        }
-                    }
-
-                if viewModel.searchState.isSearchingStart && !viewModel.searchState.startSearchResults.isEmpty {
-                    searchResultsView(results: viewModel.searchState.startSearchResults, isStart: true)
-                }
-            }
-
-            // End Location
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("End Location")
-                        .font(.headline)
-                    Spacer()
-                }
-
-                TextField("Enter end address", text: $viewModel.searchState.endAddress)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .accessibilityLabel("End location search field")
-                    .accessibilityHint("Enter an address or location name to search for the ending point")
-                    .onChange(of: viewModel.searchState.endAddress) { oldValue, newValue in
-                        if viewModel.searchState.suppressEndSearch {
-                            viewModel.searchState.suppressEndSearch = false
-                            viewModel.searchState.isSearchingEnd = false
-                        } else {
-                            viewModel.searchForLocation(query: newValue, isStart: false)
-                        }
-                    }
-
-                if viewModel.searchState.isSearchingEnd && !viewModel.searchState.endSearchResults.isEmpty {
-                    searchResultsView(results: viewModel.searchState.endSearchResults, isStart: false)
-                }
-            }
-        }
-    }
-
-    private var singleFieldSearchView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func locationSearchField(
+        title: String,
+        placeholder: String,
+        text: Binding<String>,
+        isSearching: Bool,
+        searchResults: [MKMapItem],
+        accessibilityLabel: String,
+        accessibilityHint: String,
+        suppressSearch: Bool,
+        suppressBinding: Binding<Bool>,
+        isSearchingBinding: Binding<Bool>,
+        isStart: Bool?
+    ) -> some View {
+        VStack {
             HStack {
-                Text("Location")
+                Text(title)
                     .font(.headline)
-                Spacer()
-            }
 
-            TextField("Enter address", text: $viewModel.searchState.startAddress)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .accessibilityLabel("Location search field")
-                .accessibilityHint("Enter an address or location name to search for a single point")
-                .onChange(of: viewModel.searchState.startAddress) { oldValue, newValue in
-                    if viewModel.searchState.suppressStartSearch {
-                        viewModel.searchState.suppressStartSearch = false
-                        viewModel.searchState.isSearchingStart = false
-                    } else {
-                        viewModel.searchForSingleLocation(query: newValue)
+                TextField(placeholder, text: text)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .accessibilityLabel(accessibilityLabel)
+                    .accessibilityHint(accessibilityHint)
+                    .onChange(of: text.wrappedValue) { oldValue, newValue in
+                        if suppressSearch {
+                            suppressBinding.wrappedValue = false
+                            isSearchingBinding.wrappedValue = false
+                        } else {
+                            if let isStart = isStart {
+                                viewModel.searchForLocation(query: newValue, isStart: isStart)
+                            } else {
+                                viewModel.searchForSingleLocation(query: newValue)
+                            }
+                        }
                     }
-                }
-
-            if viewModel.searchState.isSearchingStart && !viewModel.searchState.startSearchResults.isEmpty {
-                searchResultsView(results: viewModel.searchState.startSearchResults, isStart: nil)
             }
 
+            if isSearching && !searchResults.isEmpty {
+                searchResultsView(results: searchResults, isStart: isStart)
+            }
         }
     }
 
     private func searchResultsView(results: [MKMapItem], isStart: Bool?) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 4) {
-                                    ForEach(results, id: \.self) { item in
-                                        Button(action: {
-                                            if let isStart = isStart {
-                                                viewModel.selectLocation(item, isStart: isStart)
-                                            } else {
-                                                viewModel.selectSingleLocation(item)
-                                            }
-                                        }) {
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(item.name ?? "Unknown")
-                                                    .font(.body)
-                                                    .foregroundColor(.primary)
-                                                Text(item.placemark.title ?? "")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .padding(.vertical, 4)
-                                        }
-                                        .buttonStyle(PlainButtonStyle())
-                                        .accessibilityLabel("Select location: \(item.name ?? "Unknown")")
-                                        .accessibilityHint("Tap to select this location as \(isStart == true ? "start" : isStart == false ? "end" : "single") point")
-                                    }
+                ForEach(results, id: \.self) { item in
+                    Button(action: {
+                        if let isStart = isStart {
+                            viewModel.selectLocation(item, isStart: isStart)
+                        } else {
+                            viewModel.selectSingleLocation(item)
+                        }
+                    }) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.name ?? "Unknown")
+                                .font(.body)
+                                .foregroundColor(.primary)
+                            Text(item.placemark.title ?? "")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Divider()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityLabel("Select location: \(item.name ?? "Unknown")")
+                    .accessibilityHint("Tap to select this location as \(isStart == true ? "start" : isStart == false ? "end" : "single") point")
+                }
             }
+            .padding(.horizontal)
         }
         .frame(maxHeight: 120)
         .background(Color(nsColor: .windowBackgroundColor))
-        .cornerRadius(8)
+        .cornerRadius(10)
     }
 }
 

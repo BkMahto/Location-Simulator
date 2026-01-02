@@ -19,33 +19,11 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // Header with toggle and simulation speed
                 HStack {
-                    Text("GPX Creator")
-                        .font(.title2)
-                        .fontWeight(.bold)
-
-                    Spacer()
-
-                    HStack(spacing: 16) {
-                        if viewModel.appState.isTwoFieldMode {
-                            HStack {
-                                Text("Simulation Speed")
-                                    .font(.headline)
-
-                                TextField("Speed", value: .init(
-                                    get: { viewModel.appState.simulationSpeed },
-                                    set: { viewModel.updateSimulationSpeed($0) }
-                                ), format: .number)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .frame(maxWidth: 80)
-                                    .help("Simulation speed in km/h (20-100)")
-                                    .accessibilityLabel("Simulation speed")
-                                    .accessibilityHint("Enter simulation speed between 20 and 100 km/h for GPX file generation")
-
-                                Text("km/h")
-                                    .font(.subheadline)
-                            }
-                        }
-
+                    AddressSearchView(viewModel: viewModel)
+                        .padding()
+                        .background(Color(nsColor: .separatorColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    VStack {
                         Toggle("Two Fields", isOn: .init(
                             get: { viewModel.appState.isTwoFieldMode },
                             set: { _ in viewModel.toggleTwoFieldMode() }
@@ -55,20 +33,41 @@ struct ContentView: View {
                             .accessibilityLabel("Two field mode toggle")
                             .accessibilityHint("Toggle between single address field and separate start/end address fields")
                             .keyboardShortcut("t", modifiers: .command)
+
+                        if viewModel.appState.isTwoFieldMode {
+                            VStack {
+                                Text("Simulation Speed")
+                                    .font(.headline)
+
+                                HStack {
+                                    TextField("Speed", value: .init(
+                                        get: { viewModel.appState.simulationSpeed },
+                                        set: { viewModel.updateSimulationSpeed($0) }
+                                    ), format: .number)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(maxWidth: 80)
+                                    .help("Simulation speed in km/h (20-100)")
+                                    .accessibilityLabel("Simulation speed")
+                                    .accessibilityHint("Enter simulation speed between 20 and 100 km/h for GPX file generation")
+
+                                    Text("km/h")
+                                        .font(.subheadline)
+                                }
+                            }
+                        }
                     }
+                    .padding()
+                    .background(Color(nsColor: .separatorColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .padding()
                 .background(Color(nsColor: .windowBackgroundColor))
 
-                // Address search section
-                AddressSearchView(viewModel: viewModel)
-
-                // Map view
-                MapView(viewModel: viewModel)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                // Control buttons
-                MapControlsView(viewModel: viewModel)
+                ZStack(alignment: .topTrailing) {
+                    MapView(viewModel: viewModel)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    MapControlsView(viewModel: viewModel)
+                }
             }
 
             // Error and warning alerts

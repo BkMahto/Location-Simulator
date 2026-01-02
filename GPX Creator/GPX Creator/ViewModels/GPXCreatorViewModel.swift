@@ -5,11 +5,10 @@
 //  Created by Bandan.K on 15/09/25.
 //
 
-import Foundation
-import MapKit
 import Combine
-import SwiftUI
 import CoreLocation
+import MapKit
+import SwiftUI
 
 @MainActor
 class GPXCreatorViewModel: NSObject, ObservableObject {
@@ -68,14 +67,10 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
         let status = locationManager.authorizationStatus
         switch status {
-        case .notDetermined:
-            locationManager.requestWhenInUseAuthorization()
+        case .notDetermined, .denied, .restricted:
+            locationManager.requestAlwaysAuthorization()
         case .authorized, .authorizedAlways:
             locationManager.requestLocation()
-        case .denied, .restricted:
-            locationManager.requestWhenInUseAuthorization()
-            // Use fallback location (already set in setupInitialState)
-            break
         @unknown default:
             break
         }
@@ -133,15 +128,20 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
                 appState.route = nil
 
                 // Center map on the remaining point
-                if let endLocation = appState.selectedEndLocation {
-                    centerMapOnCoordinate(endLocation)
+                if !searchState.startAddress.isEmpty {
+                    if let startLocation = appState.selectedStartLocation {
+                        centerMapOnCoordinate(startLocation)
+                    }
+                } else {
+                    if let endLocation = appState.selectedEndLocation {
+                        centerMapOnCoordinate(endLocation)
+                    }
                 }
             }
         }
 
         clearSearchResults()
     }
-
 
     func clearSelections() {
         appState.selectedStartLocation = nil
@@ -202,11 +202,11 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     func searchForSingleLocation(query: String) {
         guard !query.isEmpty else {
-            clearSearchResults(for: .start) // Use start instead of single
+            clearSearchResults(for: .start)  // Use start instead of single
             return
         }
 
-        cancelSearch(for: .start) // Use start instead of single
+        cancelSearch(for: .start)  // Use start instead of single
 
         let task = Task {
             do {
@@ -220,7 +220,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
             }
         }
 
-        searchTasks["start"] = task // Use start instead of single
+        searchTasks["start"] = task  // Use start instead of single
     }
 
     func selectLocation(_ item: MKMapItem, isStart: Bool) {
@@ -248,9 +248,9 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     func selectSingleLocation(_ item: MKMapItem) {
         let coordinate = item.placemark.coordinate
         appState.selectedStartLocation = coordinate
-        searchState.startAddress = item.name ?? (item.placemark.title ?? "") // Use startAddress
-        searchState.startSearchResults = [] // Use startSearchResults
-        searchState.isSearchingStart = false // Use isSearchingStart
+        searchState.startAddress = item.name ?? (item.placemark.title ?? "")  // Use startAddress
+        searchState.startSearchResults = []  // Use startSearchResults
+        searchState.isSearchingStart = false  // Use isSearchingStart
 
         appState.region.center = coordinate
         appState.isTwoFieldMode = false
@@ -261,9 +261,8 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     func calculateRoute() async {
         guard canCalculateRoute() && validateInputsForAction(),
               let start = appState.selectedStartLocation,
-              let end = appState.selectedEndLocation else {
-            return
-        }
+              let end = appState.selectedEndLocation
+        else { return }
 
         exportState.isCalculatingRoute = true
         defer { exportState.isCalculatingRoute = false }
@@ -275,6 +274,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
             if appState.selectedStartLocation != nil && appState.selectedEndLocation != nil {
                 appState.isTwoFieldMode = true
             }
+            fitToRoute()
         } catch {
             let errorMessage: String
             let nsError = error as NSError
@@ -330,7 +330,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         }
 
         // Determine which location we're setting and update coordinates
-        var targetField: String = "start" // Default to start field
+        var targetField: String = "start"  // Default to start field
 
         if appState.selectedStartLocation == nil {
             // Setting the first/start location
@@ -398,7 +398,19 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         do {
             let request = MKLocalSearch.Request()
             request.naturalLanguageQuery = query
-            // Global search - no region restriction
+
+            // Bias search results based on start location if available
+            if let startLocation = appState.selectedStartLocation {
+                // If start location is set, bias search towards that region (country-level)
+                let searchRegion = MKCoordinateRegion(
+                    center: startLocation,
+                    span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10) // ~1000km radius
+                )
+                request.region = searchRegion
+            } else {
+                // No start location set, use current map region for global search
+                request.region = appState.region
+            }
 
             let search = MKLocalSearch(request: request)
 
@@ -423,14 +435,13 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
             await MainActor.run {
                 let nsError = error as NSError
                 let errorMessage = nsError.domain == "MKErrorDomain" ?
-                    "Location search failed. Check your internet connection and try again." :
-                    error.localizedDescription
+                "Location search failed. Check your internet connection and try again." :
+                error.localizedDescription
                 showError(.locationSearchFailed(errorMessage))
                 clearSearchResults(for: searchType)
             }
         }
     }
-
 
     private func performRouteCalculation(from start: CLLocationCoordinate2D, to end: CLLocationCoordinate2D) async throws -> MKRoute {
         let startPlacemark = MKPlacemark(coordinate: start)
@@ -501,7 +512,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
         // Use array for efficient string building with large datasets
         var gpxLines: [String] = []
-        gpxLines.reserveCapacity(coordinates.count + 10) // Pre-allocate capacity
+        gpxLines.reserveCapacity(coordinates.count + 10)  // Pre-allocate capacity
 
         gpxLines.append("<?xml version=\"1.0\"?>")
         gpxLines.append("<gpx version=\"1.1\" creator=\"GPX Creator • Bandan Kumar Mahto\">")
@@ -572,20 +583,19 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         coords.append(points[0].coordinate)
 
         let totalDistance = calculatePolylineDistance(polyline)
-        let targetSegmentDistance = totalDistance / Double(maxPoints - 1) // -1 to account for start and end
+        let targetSegmentDistance = totalDistance / Double(maxPoints - 1)  // -1 to account for start and end
 
         var currentDistance: Double = 0
 
         for i in 1..<count {
-            let segmentDistance = distanceMeters(from: points[i-1].coordinate, to: points[i].coordinate)
+            let segmentDistance = distanceMeters(from: points[i - 1].coordinate, to: points[i].coordinate)
             currentDistance += segmentDistance
 
             // Include point if we've traveled far enough or if it's the last point
             if currentDistance >= targetSegmentDistance || i == count - 1 {
                 // Avoid duplicates
                 let currentCoord = points[i].coordinate
-                if coords.last?.latitude != currentCoord.latitude ||
-                   coords.last?.longitude != currentCoord.longitude {
+                if coords.last?.latitude != currentCoord.latitude || coords.last?.longitude != currentCoord.longitude {
                     coords.append(currentCoord)
                 }
                 currentDistance = 0
@@ -599,8 +609,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
         // Always ensure the last point is included
         let lastCoord = points[count - 1].coordinate
-        if coords.last?.latitude != lastCoord.latitude ||
-           coords.last?.longitude != lastCoord.longitude {
+        if coords.last?.latitude != lastCoord.latitude || coords.last?.longitude != lastCoord.longitude {
             coords.append(lastCoord)
         }
 
@@ -613,7 +622,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         var totalDistance: Double = 0
 
         for i in 1..<count {
-            totalDistance += distanceMeters(from: points[i-1].coordinate, to: points[i].coordinate)
+            totalDistance += distanceMeters(from: points[i - 1].coordinate, to: points[i].coordinate)
         }
 
         return totalDistance
@@ -636,7 +645,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     private func centerMapOnCoordinate(_ coordinate: CLLocationCoordinate2D) {
         let region = MKCoordinateRegion(
             center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.15, longitudeDelta: 0.15)
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         )
         appState.region = region
     }
@@ -730,9 +739,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     }
 
     func canCalculateRoute() -> Bool {
-        return appState.selectedStartLocation != nil &&
-               appState.selectedEndLocation != nil &&
-               !exportState.isCalculatingRoute
+        return appState.selectedStartLocation != nil && appState.selectedEndLocation != nil && !exportState.isCalculatingRoute
     }
 
     func canExportRoute() -> Bool {
@@ -755,12 +762,9 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 }
 
 // MARK: - CLLocationManagerDelegate
-
-extension GPXCreatorViewModel: CLLocationManagerDelegate {
+extension GPXCreatorViewModel: @MainActor CLLocationManagerDelegate {
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
-
-        // Validate coordinate
         guard CLLocationCoordinate2DIsValid(location.coordinate) else { return }
 
         // Only update region if no points have been selected yet (initial setup)
@@ -772,16 +776,12 @@ extension GPXCreatorViewModel: CLLocationManagerDelegate {
         let coordinate = location.coordinate
         let region = MKCoordinateRegion(
             center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.15, longitudeDelta: 0.15)
+            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         )
-
-        DispatchQueue.main.async {
-            self.appState.region = region
-        }
+        self.appState.region = region
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        // Location request failed, keep the fallback location
         print("Location request failed: \(error.localizedDescription)")
     }
 
