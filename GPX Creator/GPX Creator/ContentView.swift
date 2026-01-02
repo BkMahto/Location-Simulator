@@ -26,22 +26,24 @@ struct ContentView: View {
                     Spacer()
 
                     HStack(spacing: 16) {
-                        HStack {
-                            Text("Simulation Speed")
-                                .font(.headline)
+                        if viewModel.appState.isTwoFieldMode {
+                            HStack {
+                                Text("Simulation Speed")
+                                    .font(.headline)
 
-                            TextField("Speed", value: .init(
-                                get: { viewModel.appState.simulationSpeed },
-                                set: { viewModel.updateSimulationSpeed($0) }
-                            ), format: .number)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .frame(maxWidth: 80)
-                                .help("Simulation speed in km/h (20-100)")
-                                .accessibilityLabel("Simulation speed")
-                                .accessibilityHint("Enter simulation speed between 20 and 100 km/h for GPX file generation")
+                                TextField("Speed", value: .init(
+                                    get: { viewModel.appState.simulationSpeed },
+                                    set: { viewModel.updateSimulationSpeed($0) }
+                                ), format: .number)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .frame(maxWidth: 80)
+                                    .help("Simulation speed in km/h (20-100)")
+                                    .accessibilityLabel("Simulation speed")
+                                    .accessibilityHint("Enter simulation speed between 20 and 100 km/h for GPX file generation")
 
-                            Text("km/h")
-                                .font(.subheadline)
+                                Text("km/h")
+                                    .font(.subheadline)
+                            }
                         }
 
                         Toggle("Two Fields", isOn: .init(

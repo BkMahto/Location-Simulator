@@ -100,7 +100,7 @@ struct MapView: NSViewRepresentable {
 
             // Check if the click was on an annotation view
             for annotation in mapView.annotations {
-                if let annotationView = mapView.view(for: annotation) {
+                if mapView.view(for: annotation) != nil {
                     let annotationPoint = mapView.convert(annotation.coordinate, toPointTo: mapView)
                     let annotationRect = CGRect(x: annotationPoint.x - 20, y: annotationPoint.y - 20, width: 40, height: 40)
 

@@ -54,5 +54,5 @@ enum GPXWarning: String {
     case noRouteCalculated = "No route calculated yet. Select start and end points first."
     case noLocationSelected = "No location selected. Click on the map or search for a location."
     case simulationSpeedAdjusted = "Simulation speed adjusted to recommended range (20-100 km/h)."
-    case searchResultsLimited = "Showing first 3 search results. Refine your search for more specific results."
+    case searchResultsLimited = "Showing first 5 search results. Refine your search for more specific results."
 }

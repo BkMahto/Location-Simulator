@@ -117,20 +117,6 @@ struct MapControlsView: View {
                 .accessibilityLabel("Export route GPX")
                 .accessibilityHint("Save the calculated route as a GPX file for location simulation")
                 .keyboardShortcut("s", modifiers: .command)
-
-                Button(action: {
-                    viewModel.clearMap()
-                }) {
-                    HStack {
-                        Image(systemName: "map")
-                        Text("Clear Map")
-                    }
-                }
-                .buttonStyle(.bordered)
-                .tint(.purple)
-                .help("Clear map and reset all selections")
-                .accessibilityLabel("Clear map")
-                .accessibilityHint("Remove all annotations and reset the map to default state")
             }
         }
         .padding()

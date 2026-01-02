@@ -87,22 +87,23 @@ struct AddressSearchView: View {
                 Spacer()
             }
 
-            TextField("Enter address", text: $viewModel.searchState.singleAddress)
+            TextField("Enter address", text: $viewModel.searchState.startAddress)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .accessibilityLabel("Location search field")
                 .accessibilityHint("Enter an address or location name to search for a single point")
-                .onChange(of: viewModel.searchState.singleAddress) { oldValue, newValue in
-                    if viewModel.searchState.suppressSingleSearch {
-                        viewModel.searchState.suppressSingleSearch = false
-                        viewModel.searchState.isSearchingSingle = false
+                .onChange(of: viewModel.searchState.startAddress) { oldValue, newValue in
+                    if viewModel.searchState.suppressStartSearch {
+                        viewModel.searchState.suppressStartSearch = false
+                        viewModel.searchState.isSearchingStart = false
                     } else {
                         viewModel.searchForSingleLocation(query: newValue)
                     }
                 }
 
-            if viewModel.searchState.isSearchingSingle && !viewModel.searchState.singleSearchResults.isEmpty {
-                searchResultsView(results: viewModel.searchState.singleSearchResults, isStart: nil)
+            if viewModel.searchState.isSearchingStart && !viewModel.searchState.startSearchResults.isEmpty {
+                searchResultsView(results: viewModel.searchState.startSearchResults, isStart: nil)
             }
+
         }
     }
 

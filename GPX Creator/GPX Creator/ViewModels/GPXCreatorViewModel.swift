@@ -42,7 +42,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     // MARK: - Constants
     private let maxSimulationSpeed: Double = 100
     private let minSimulationSpeed: Double = 20
-    private let searchDebounceDelay: TimeInterval = 0.3
+    private let searchDebounceDelay: TimeInterval = 0.5
 
     // MARK: - Initialization
     override init() {
@@ -63,16 +63,17 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     }
 
     private func requestUserLocation() {
-        locationManager.desiredAccuracy = kCLLocationAccuracyKilometer
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.delegate = self
 
         let status = locationManager.authorizationStatus
         switch status {
         case .notDetermined:
             locationManager.requestWhenInUseAuthorization()
-        case .authorized:
+        case .authorized, .authorizedAlways:
             locationManager.requestLocation()
         case .denied, .restricted:
+            locationManager.requestWhenInUseAuthorization()
             // Use fallback location (already set in setupInitialState)
             break
         @unknown default:
@@ -96,30 +97,37 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     }
 
     func toggleTwoFieldMode() {
-        let wasTwoFieldMode = appState.isTwoFieldMode
         appState.isTwoFieldMode.toggle()
 
         // Handle mode switching logic
         if appState.isTwoFieldMode {
             // Switching TO two-field mode
             // Transfer single address to start address if switching from single mode
-            if !wasTwoFieldMode && !searchState.singleAddress.isEmpty {
-                searchState.startAddress = searchState.singleAddress
-                searchState.singleAddress = ""
+            if !searchState.startAddress.isEmpty {
+                // Keep the start address as is
             }
         } else {
             // Switching FROM two-field mode TO single-field mode
-            // Remove start location and transfer the remaining address to single address
+            // Remove start location, keep end location as the single location
             if appState.selectedStartLocation != nil {
-                appState.selectedStartLocation = nil
-                searchState.startAddress = ""
-                searchState.suppressStartSearch = true
-                searchState.isSearchingStart = false
-
-                // Transfer end address to single address since we're keeping the end point
                 if !searchState.endAddress.isEmpty {
-                    searchState.singleAddress = searchState.endAddress
+                    searchState.startAddress = searchState.endAddress
+                    appState.selectedStartLocation = appState.selectedEndLocation
+                    searchState.endAddress = ""
+                    appState.selectedEndLocation = nil
+                } else if !searchState.startAddress.isEmpty {
+                    appState.selectedEndLocation = nil
+                    searchState.endAddress = ""
+                    searchState.suppressEndSearch = true
+                    searchState.isSearchingEnd = false
+                } else {
+                    appState.selectedStartLocation = nil
+                    searchState.startAddress = ""
+                    searchState.suppressStartSearch = true
+                    searchState.isSearchingStart = false
                 }
+
+                // Transfer end address to start address since we're keeping the end point as single location
 
                 // If we had a route, clear it since we changed points
                 appState.route = nil
@@ -127,13 +135,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
                 // Center map on the remaining point
                 if let endLocation = appState.selectedEndLocation {
                     centerMapOnCoordinate(endLocation)
-                }
-            } else {
-                // No start location to remove, just transfer addresses
-                if !searchState.startAddress.isEmpty {
-                    searchState.singleAddress = searchState.startAddress
-                } else if !searchState.endAddress.isEmpty {
-                    searchState.singleAddress = searchState.endAddress
                 }
             }
         }
@@ -150,7 +151,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
         searchState.startAddress = ""
         searchState.endAddress = ""
-        searchState.singleAddress = ""
 
         clearSearchResults()
     }
@@ -202,11 +202,11 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     func searchForSingleLocation(query: String) {
         guard !query.isEmpty else {
-            clearSearchResults(for: .single)
+            clearSearchResults(for: .start) // Use start instead of single
             return
         }
 
-        cancelSearch(for: .single)
+        cancelSearch(for: .start) // Use start instead of single
 
         let task = Task {
             do {
@@ -214,13 +214,13 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
                 if Task.isCancelled { return }
 
-                await performSingleLocationSearch(query: query)
+                await performLocationSearch(query: query, isStart: true)
             } catch {
                 // Task cancelled, ignore
             }
         }
 
-        searchTasks["single"] = task
+        searchTasks["start"] = task // Use start instead of single
     }
 
     func selectLocation(_ item: MKMapItem, isStart: Bool) {
@@ -248,9 +248,9 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     func selectSingleLocation(_ item: MKMapItem) {
         let coordinate = item.placemark.coordinate
         appState.selectedStartLocation = coordinate
-        searchState.singleAddress = item.name ?? (item.placemark.title ?? "")
-        searchState.singleSearchResults = []
-        searchState.isSearchingSingle = false
+        searchState.startAddress = item.name ?? (item.placemark.title ?? "") // Use startAddress
+        searchState.startSearchResults = [] // Use startSearchResults
+        searchState.isSearchingStart = false // Use isSearchingStart
 
         appState.region.center = coordinate
         appState.isTwoFieldMode = false
@@ -277,7 +277,8 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
             }
         } catch {
             let errorMessage: String
-            if let nsError = error as? NSError, nsError.domain == "MKErrorDomain" {
+            let nsError = error as NSError
+            if nsError.domain == "MKErrorDomain" {
                 errorMessage = "Route calculation failed. Check your internet connection and try different locations."
             } else {
                 errorMessage = error.localizedDescription
@@ -328,49 +329,43 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
             return
         }
 
-        let isSettingStart = (appState.selectedStartLocation == nil)
+        // Determine which location we're setting and update coordinates
+        var targetField: String = "start" // Default to start field
 
-        // Set coordinate and update map region first
         if appState.selectedStartLocation == nil {
+            // Setting the first/start location
             appState.selectedStartLocation = coordinate
-            // Set immediate placeholder for start address
-            if appState.isTwoFieldMode {
-                searchState.startAddress = "Getting address..."
-                searchState.suppressStartSearch = true
-                searchState.isSearchingStart = false
-            } else {
-                searchState.singleAddress = "Getting address..."
-                searchState.suppressSingleSearch = true
-                searchState.isSearchingSingle = false
-            }
+            targetField = "start"
             // Center map on the selected point
             centerMapOnCoordinate(coordinate)
         } else if appState.selectedEndLocation == nil {
+            // Setting the second/end location
             appState.selectedEndLocation = coordinate
-            // Set immediate placeholder for end address
-            searchState.endAddress = "Getting address..."
-            searchState.suppressEndSearch = true
-            searchState.isSearchingEnd = false
-
-            // If we're currently in single-field mode, transfer the single address to start address
-            if !appState.isTwoFieldMode && !searchState.singleAddress.isEmpty {
-                searchState.startAddress = searchState.singleAddress
-                searchState.singleAddress = ""
-            }
+            targetField = "end"
 
             // Center map between both points
             centerMapBetweenPoints()
             // Automatically switch to two-field mode when both points are selected
             appState.isTwoFieldMode = true
         } else {
-            // Both points already selected, replace the most recently added point
-            // For simplicity, replace the end point
+            // Both points already selected, replace the most recently added point (end point)
             appState.selectedEndLocation = coordinate
-            // Set immediate placeholder for end address
-            searchState.endAddress = "Getting address..."
+            targetField = "end"
+            // Clear any existing route since we're changing the end location
+            appState.route = nil
+            centerMapBetweenPoints()
+        }
+
+        // Set immediate coordinate display for the appropriate field
+        let coordinateString = String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude)
+        if targetField == "start" {
+            searchState.startAddress = coordinateString
+            searchState.suppressStartSearch = true
+            searchState.isSearchingStart = false
+        } else {
+            searchState.endAddress = coordinateString
             searchState.suppressEndSearch = true
             searchState.isSearchingEnd = false
-            centerMapBetweenPoints()
         }
 
         // Perform reverse geocoding to get address
@@ -379,65 +374,38 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
                 let address = try await reverseGeocodeLocation(coordinate)
 
                 await MainActor.run {
-                    // Determine which field to update based on current app state and what we were setting
-                    if appState.isTwoFieldMode {
-                        if isSettingStart && searchState.startAddress == "Getting address..." {
-                            // We were setting the start location, update it
-                            searchState.startAddress = address
-                            searchState.suppressStartSearch = true
-                        } else if !isSettingStart && searchState.endAddress == "Getting address..." {
-                            // We were setting the end location, update it
-                            searchState.endAddress = address
-                            searchState.suppressEndSearch = true
-                        }
-                    } else if searchState.singleAddress == "Getting address..." {
-                        // We're in single field mode and were setting the single location
-                        searchState.singleAddress = address
-                        searchState.suppressSingleSearch = true
+                    // Update the appropriate field with the geocoded address
+                    if targetField == "start" {
+                        searchState.startAddress = address
+                        searchState.suppressStartSearch = true
+                    } else {
+                        searchState.endAddress = address
+                        searchState.suppressEndSearch = true
                     }
                 }
             } catch {
-                // Use generic name if geocoding fails
-                let address = "Selected Location (\(String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude)))"
-
-                await MainActor.run {
-                    // Determine which field to update based on current app state and what we were setting
-                    if appState.isTwoFieldMode {
-                        if isSettingStart && searchState.startAddress == "Getting address..." {
-                            // We were setting the start location, update it
-                            searchState.startAddress = address
-                            searchState.suppressStartSearch = true
-                        } else if !isSettingStart && searchState.endAddress == "Getting address..." {
-                            // We were setting the end location, update it
-                            searchState.endAddress = address
-                            searchState.suppressEndSearch = true
-                        }
-                    } else if searchState.singleAddress == "Getting address..." {
-                        // We're in single field mode and were setting the single location
-                        searchState.singleAddress = address
-                        searchState.suppressSingleSearch = true
-                    }
-                }
+                // Reverse geocoding failed, but we already set the coordinate string, so no need to update
+                // The field already shows the coordinate string, so we don't need to change it
             }
         }
     }
 
     // MARK: - Private Methods
 
-    private func performLocationSearch(query: String, isStart: Bool) async {
+    private func performLocationSearch(query: String, isStart: Bool = true) async {
         let searchType: SearchType = isStart ? .start : .end
 
         do {
             let request = MKLocalSearch.Request()
             request.naturalLanguageQuery = query
-            request.region = appState.region
+            // Global search - no region restriction
 
             let search = MKLocalSearch(request: request)
 
             let response = try await search.start()
 
             await MainActor.run {
-                let results = Array(response.mapItems.prefix(3))
+                let results = Array(response.mapItems.prefix(5))
 
                 if isStart {
                     searchState.startSearchResults = results
@@ -447,13 +415,14 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
                     searchState.isSearchingEnd = true
                 }
 
-                if results.count >= 3 {
+                if results.count >= 5 {
                     showWarning(.searchResultsLimited)
                 }
             }
         } catch {
             await MainActor.run {
-                let errorMessage = (error as NSError).domain == "MKErrorDomain" ?
+                let nsError = error as NSError
+                let errorMessage = nsError.domain == "MKErrorDomain" ?
                     "Location search failed. Check your internet connection and try again." :
                     error.localizedDescription
                 showError(.locationSearchFailed(errorMessage))
@@ -462,34 +431,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         }
     }
 
-    private func performSingleLocationSearch(query: String) async {
-        do {
-            let request = MKLocalSearch.Request()
-            request.naturalLanguageQuery = query
-            request.region = appState.region
-
-            let search = MKLocalSearch(request: request)
-            let response = try await search.start()
-
-            await MainActor.run {
-                let results = Array(response.mapItems.prefix(3))
-                searchState.singleSearchResults = results
-                searchState.isSearchingSingle = true
-
-                if results.count >= 3 {
-                    showWarning(.searchResultsLimited)
-                }
-            }
-        } catch {
-            await MainActor.run {
-                let errorMessage = (error as NSError).domain == "MKErrorDomain" ?
-                    "Location search failed. Check your internet connection and try again." :
-                    error.localizedDescription
-                showError(.locationSearchFailed(errorMessage))
-                clearSearchResults(for: .single)
-            }
-        }
-    }
 
     private func performRouteCalculation(from start: CLLocationCoordinate2D, to end: CLLocationCoordinate2D) async throws -> MKRoute {
         let startPlacemark = MKPlacemark(coordinate: start)
@@ -634,7 +575,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         let targetSegmentDistance = totalDistance / Double(maxPoints - 1) // -1 to account for start and end
 
         var currentDistance: Double = 0
-        var lastIncludedIndex = 0
 
         for i in 1..<count {
             let segmentDistance = distanceMeters(from: points[i-1].coordinate, to: points[i].coordinate)
@@ -648,9 +588,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
                    coords.last?.longitude != currentCoord.longitude {
                     coords.append(currentCoord)
                 }
-
                 currentDistance = 0
-                lastIncludedIndex = i
 
                 // Break if we've reached our target count (but always include the last point)
                 if coords.count >= maxPoints - 1 && i < count - 1 {
@@ -698,7 +636,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     private func centerMapOnCoordinate(_ coordinate: CLLocationCoordinate2D) {
         let region = MKCoordinateRegion(
             center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.1, longitudeDelta: 0.1)
+            span: MKCoordinateSpan(latitudeDelta: 0.15, longitudeDelta: 0.15)
         )
         appState.region = region
     }
@@ -717,7 +655,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         let lonDelta = abs(start.longitude - end.longitude) * 1.5
 
         // Ensure minimum span for visibility
-        let minSpan: CLLocationDegrees = 0.01
+        let minSpan: CLLocationDegrees = 0.05
         let span = MKCoordinateSpan(
             latitudeDelta: max(latDelta, minSpan),
             longitudeDelta: max(lonDelta, minSpan)
@@ -735,10 +673,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         if type == nil || type == .end {
             searchState.endSearchResults = []
             searchState.isSearchingEnd = false
-        }
-        if type == nil || type == .single {
-            searchState.singleSearchResults = []
-            searchState.isSearchingSingle = false
         }
     }
 
@@ -759,9 +693,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     }
 
     private func getAddressForCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {
-        if !searchState.singleAddress.isEmpty {
-            return searchState.singleAddress
-        } else if !searchState.endAddress.isEmpty {
+        if !searchState.endAddress.isEmpty {
             return searchState.endAddress
         } else if !searchState.startAddress.isEmpty {
             return searchState.startAddress
@@ -788,7 +720,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
                 return false
             }
         } else {
-            if searchState.singleAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if searchState.startAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 showWarning(.noLocationSelected)
                 return false
             }
@@ -855,7 +787,7 @@ extension GPXCreatorViewModel: CLLocationManagerDelegate {
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
-        if status == .authorized {
+        if status == .authorized || status == .authorizedAlways {
             manager.requestLocation()
         }
     }
@@ -864,7 +796,7 @@ extension GPXCreatorViewModel: CLLocationManagerDelegate {
 // MARK: - Supporting Types
 
 enum SearchType: String {
-    case start, end, single
+    case start, end
 }
 
 struct AppState {
@@ -879,16 +811,12 @@ struct AppState {
 struct SearchState {
     var startAddress = ""
     var endAddress = ""
-    var singleAddress = ""
     var startSearchResults: [MKMapItem] = []
     var endSearchResults: [MKMapItem] = []
-    var singleSearchResults: [MKMapItem] = []
     var isSearchingStart = false
     var isSearchingEnd = false
-    var isSearchingSingle = false
     var suppressStartSearch = false
     var suppressEndSearch = false
-    var suppressSingleSearch = false
 }
 
 struct ExportState {
