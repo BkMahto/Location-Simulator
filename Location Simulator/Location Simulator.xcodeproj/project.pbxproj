@@ -10,22 +10,9 @@
 		C21C2E582E7811080057B7A2 /* Location Simulator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Location Simulator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		C22C45EC2ECDA45600BD1047 /* Exceptions for "Location Simulator" folder in "Location Simulator" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"Location-Simulator-Info.plist",
-			);
-			target = C21C2E572E7811080057B7A2 /* Location Simulator */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C21C2E5A2E7811080057B7A2 /* Location Simulator */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				C22C45EC2ECDA45600BD1047 /* Exceptions for "Location Simulator" folder in "Location Simulator" target */,
-			);
 			path = "Location Simulator";
 			sourceTree = "<group>";
 		};

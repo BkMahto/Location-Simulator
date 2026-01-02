@@ -9,22 +9,7 @@ import SwiftUI
 import MapKit
 
 struct MapView: NSViewRepresentable {
-    @Binding var region: MKCoordinateRegion
-    @Binding var selectedStartLocation: CLLocationCoordinate2D?
-    @Binding var selectedEndLocation: CLLocationCoordinate2D?
-    @Binding var isPathMode: Bool
-    @Binding var route: MKRoute?
-    @Binding var isCalculatingRoute: Bool
-    @Binding var startAddress: String
-    @Binding var endAddress: String
-    @Binding var singleAddress: String
-    @Binding var isTwoFieldMode: Bool
-    @Binding var suppressStartSearch: Bool
-    @Binding var suppressEndSearch: Bool
-    @Binding var suppressSingleSearch: Bool
-    @Binding var isSearchingStart: Bool
-    @Binding var isSearchingEnd: Bool
-    @Binding var isSearchingSingle: Bool
+    @ObservedObject var viewModel: GPXCreatorViewModel
 
     func makeNSView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -32,7 +17,13 @@ struct MapView: NSViewRepresentable {
         mapView.showsUserLocation = true
         mapView.userTrackingMode = .none
 
+        // Add click gesture recognizer with proper configuration
         let click = NSClickGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleClick(_:)))
+        click.numberOfClicksRequired = 1
+        click.numberOfTouchesRequired = 1
+        // Don't cancel other gestures - allow coexistence with map gestures
+        click.delaysPrimaryMouseButtonEvents = false
+        click.delaysSecondaryMouseButtonEvents = false
         mapView.addGestureRecognizer(click)
 
         return mapView
@@ -41,14 +32,14 @@ struct MapView: NSViewRepresentable {
     func updateNSView(_ mapView: MKMapView, context: Context) {
         // Only update region if it's significantly different to avoid snapping back
         let current = mapView.region
-        let new = region
+        let new = viewModel.appState.region
         let centerDeltaLat = abs(current.center.latitude - new.center.latitude)
         let centerDeltaLon = abs(current.center.longitude - new.center.longitude)
         let spanDeltaLat = abs(current.span.latitudeDelta - new.span.latitudeDelta)
         let spanDeltaLon = abs(current.span.longitudeDelta - new.span.longitudeDelta)
-        let needsUpdate = centerDeltaLat > 0.0005 || centerDeltaLon > 0.0005 || spanDeltaLat > 0.0005 || spanDeltaLon > 0.0005
+        let needsUpdate = centerDeltaLat > 0.0001 || centerDeltaLon > 0.0001 || spanDeltaLat > 0.001 || spanDeltaLon > 0.001
         if needsUpdate {
-            mapView.setRegion(region, animated: true)
+            mapView.setRegion(viewModel.appState.region, animated: true)
         }
 
         // Clear existing annotations and overlays
@@ -56,7 +47,7 @@ struct MapView: NSViewRepresentable {
         mapView.removeOverlays(mapView.overlays)
 
         // Add start location annotation
-        if let startLocation = selectedStartLocation {
+        if let startLocation = viewModel.appState.selectedStartLocation {
             let startAnnotation = MKPointAnnotation()
             startAnnotation.coordinate = startLocation
             startAnnotation.title = "Start"
@@ -64,7 +55,7 @@ struct MapView: NSViewRepresentable {
         }
 
         // Add end location annotation
-        if let endLocation = selectedEndLocation {
+        if let endLocation = viewModel.appState.selectedEndLocation {
             let endAnnotation = MKPointAnnotation()
             endAnnotation.coordinate = endLocation
             endAnnotation.title = "End"
@@ -72,7 +63,7 @@ struct MapView: NSViewRepresentable {
         }
 
         // Add route polyline if available
-        if let route = route {
+        if let route = viewModel.appState.route {
             mapView.addOverlay(route.polyline)
         }
     }
@@ -103,51 +94,29 @@ struct MapView: NSViewRepresentable {
         }
 
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
-            guard parent.isPathMode, let mapView = gesture.view as? MKMapView else { return }
+            guard let mapView = gesture.view as? MKMapView else { return }
+
             let point = gesture.location(in: mapView)
-            let coordinate = mapView.convert(point, toCoordinateFrom: mapView)
 
-            // Decide upfront which field to target to avoid race with geocoder
-            let isSettingStart = (parent.selectedStartLocation == nil)
+            // Check if the click was on an annotation view
+            for annotation in mapView.annotations {
+                if let annotationView = mapView.view(for: annotation) {
+                    let annotationPoint = mapView.convert(annotation.coordinate, toPointTo: mapView)
+                    let annotationRect = CGRect(x: annotationPoint.x - 20, y: annotationPoint.y - 20, width: 40, height: 40)
 
-            let geocoder = CLGeocoder()
-            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            geocoder.reverseGeocodeLocation(location) { placemarks, _ in
-                if let p = placemarks?.first {
-                    // Build a concise address/title from CLPlacemark components
-                    let parts: [String] = [
-                        p.name,
-                        p.locality,
-                        p.administrativeArea,
-                    ].compactMap { $0 }
-                    let title = parts.first ?? "Selected Location"
-                    DispatchQueue.main.async {
-                        if self.parent.isTwoFieldMode {
-                            if isSettingStart {
-                                self.parent.startAddress = title
-                                self.parent.suppressStartSearch = true
-                                self.parent.isSearchingStart = false
-                            } else {
-                                self.parent.endAddress = title
-                                self.parent.suppressEndSearch = true
-                                self.parent.isSearchingEnd = false
-                            }
-                        } else {
-                            self.parent.singleAddress = title
-                            self.parent.suppressSingleSearch = true
-                            self.parent.isSearchingSingle = false
-                        }
+                    if annotationRect.contains(point) {
+                        // Click was on an annotation, let the map handle it
+                        return
                     }
                 }
             }
 
-            if parent.selectedStartLocation == nil {
-                parent.selectedStartLocation = coordinate
-            } else if parent.selectedEndLocation == nil {
-                parent.selectedEndLocation = coordinate
-                parent.isPathMode = false
-            }
-            // Do not force recenter; keep current camera
+            // Click was on empty map space, handle point selection
+            let coordinate = mapView.convert(point, toCoordinateFrom: mapView)
+
+            // Handle the map click through the view model
+            // Always allow clicking to select points, regardless of path mode
+            parent.viewModel.handleMapClick(at: coordinate)
         }
     }
 }
