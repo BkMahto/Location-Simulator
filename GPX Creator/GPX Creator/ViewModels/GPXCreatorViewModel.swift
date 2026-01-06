@@ -677,7 +677,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 }
 
 // MARK: - Supporting Types
-
 enum SearchType: String {
     case start, end
 }
