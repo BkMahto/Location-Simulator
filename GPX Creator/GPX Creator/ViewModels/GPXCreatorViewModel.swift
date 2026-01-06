@@ -10,12 +10,23 @@ import CoreLocation
 import MapKit
 import SwiftUI
 
+/// The Main Actor isolated ViewModel for managing GPX creation and simulation logic.
+///
+/// This class handles map interaction, location search, route calculation, and GPX file generation.
 @MainActor
 class GPXCreatorViewModel: NSObject, ObservableObject {
     // MARK: - Published State
+    
+    /// The core application state including current map region and mode.
     @Published var appState = AppState()
+    
+    /// State related to location searching and search results.
     @Published var searchState = SearchState()
+    
+    /// State related to route calculation and GPX export processes.
     @Published var exportState = ExportState()
+    
+    /// State for handling and displaying errors or warnings to the user.
     @Published var errorState = ErrorState()
 
     // MARK: - Private Properties
@@ -49,6 +60,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         setupInitialState()
     }
 
+    /// Configures the initial state of the application, including a fallback map region and requesting user location.
     private func setupInitialState() {
         // Start with fallback location
         let fallbackCoordinate = CLLocationCoordinate2D(latitude: 22.47769553, longitude: 70.0467413)
@@ -61,6 +73,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         requestUserLocation()
     }
 
+    /// Requests the user's current location authorization and updates the map region if granted.
     private func requestUserLocation() {
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.delegate = self
@@ -78,6 +91,8 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     // MARK: - Public Methods
 
+    /// Updates the simulation speed for GPX generation, ensuring it stays within valid bounds.
+    /// - Parameter newSpeed: The desired speed in km/h.
     func updateSimulationSpeed(_ newSpeed: Double) {
         let validatedSpeed = max(minSimulationSpeed, min(maxSimulationSpeed, newSpeed))
         let roundedSpeed = round(validatedSpeed / 10) * 10
@@ -91,6 +106,10 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         }
     }
 
+    /// Toggles between single-location mode and two-field (start/end) mode.
+    ///
+    /// When switching to two-field mode, existing selections are maintained where possible.
+    /// When switching back to single-location mode, the map state is consolidated to a single point.
     func toggleTwoFieldMode() {
         appState.isTwoFieldMode.toggle()
 
@@ -143,6 +162,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         clearSearchResults()
     }
 
+    /// Resets all selections and search states back to their default values.
     func clearSelections() {
         appState.selectedStartLocation = nil
         appState.selectedEndLocation = nil
@@ -159,6 +179,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         clearSelections()
     }
 
+    /// Adjusts the map view to fit the entire calculated route.
     func fitToRoute() {
         guard let route = appState.route else { return }
 
@@ -175,6 +196,10 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     // MARK: - Location Search
 
+    /// Initiates a debounced search for a location based on a string query.
+    /// - Parameters:
+    ///   - query: The address or place name to search for.
+    ///   - isStart: Boolean indicating if this is for the start field (true) or end field (false).
     func searchForLocation(query: String, isStart: Bool) {
         guard !query.isEmpty else {
             clearSearchResults(for: isStart ? .start : .end)
@@ -223,6 +248,10 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         searchTasks["start"] = task  // Use start instead of single
     }
 
+    /// Completes the location selection process for a given map item.
+    /// - Parameters:
+    ///   - item: The `MKMapItem` selected from search results.
+    ///   - isStart: Boolean indicating if this selection is for the start or end position.
     func selectLocation(_ item: MKMapItem, isStart: Bool) {
         let coordinate = item.placemark.coordinate
 
@@ -258,6 +287,9 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     // MARK: - Route Calculation
 
+    /// Calculates the driving route between the selected start and end locations.
+    ///
+    /// This method is asynchronous and updates the `appState.route` upon successful completion.
     func calculateRoute() async {
         guard canCalculateRoute() && validateInputsForAction(),
               let start = appState.selectedStartLocation,
@@ -289,6 +321,8 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     // MARK: - GPX Export
 
+    /// Preparates the GPX content for the current calculated route.
+    /// - Returns: A tuple containing the GPX string content and a suggested filename, or nil if export is not possible.
     func prepareRouteGPX() -> (content: String, filename: String)? {
         guard canExportRoute() && validateInputsForAction(), let route = appState.route else {
             return nil
@@ -322,6 +356,12 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     // MARK: - Map Interaction
 
+    /// Handles a user click on the map by setting markers and initiating reverse geocoding.
+    ///
+    /// If no start location is selected, the click sets the start location.
+    /// If a start location exists but no end location, it sets the end location and switches to two-field mode.
+    /// If both exist, it replaces the end location.
+    /// - Parameter coordinate: The geographic coordinate where the user clicked.
     func handleMapClick(at coordinate: CLLocationCoordinate2D) {
         // Validate coordinate
         guard CLLocationCoordinate2DIsValid(coordinate) else {
@@ -392,6 +432,10 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     // MARK: - Private Methods
 
+    /// Internal method to perform the actual location search using MKLocalSearch.
+    /// - Parameters:
+    ///   - query: The string to search for.
+    ///   - isStart: Whether this is for the start or end location.
     private func performLocationSearch(query: String, isStart: Bool = true) async {
         let searchType: SearchType = isStart ? .start : .end
 
@@ -443,6 +487,11 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         }
     }
 
+    /// Internal method to calculate a route between two coordinates.
+    /// - Parameters:
+    ///   - start: The starting coordinate.
+    ///   - end: The destination coordinate.
+    /// - Returns: An `MKRoute` object on success.
     private func performRouteCalculation(from start: CLLocationCoordinate2D, to end: CLLocationCoordinate2D) async throws -> MKRoute {
         let startPlacemark = MKPlacemark(coordinate: start)
         let endPlacemark = MKPlacemark(coordinate: end)
@@ -499,6 +548,11 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         geocodeCache[key] = address
     }
 
+    /// Generates a complete GPX XML string for a given route.
+    ///
+    /// This method samples the route points and calculates timestamps based on the selected simulation speed.
+    /// - Parameter route: The route to generate GPX for.
+    /// - Returns: A string containing the GPX XML data.
     private func generateRouteGPX(route: MKRoute) throws -> String {
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = TimeZone(secondsFromGMT: 0)

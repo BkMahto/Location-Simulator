@@ -93,6 +93,9 @@ struct MapView: NSViewRepresentable {
             return MKOverlayRenderer()
         }
 
+        /// Handles click gestures on the map, converting screen points to geographic coordinates.
+        ///
+        /// This method filters out clicks on existing annotations to allow for default map selection behavior.
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
             guard let mapView = gesture.view as? MKMapView else { return }
 

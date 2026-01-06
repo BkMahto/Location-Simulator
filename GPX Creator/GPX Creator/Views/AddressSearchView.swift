@@ -59,9 +59,16 @@ struct AddressSearchView: View {
                 )
             }
         }
-        //        .background(Color(nsColor: .controlBackgroundColor))
     }
 
+    /// A customizable search field component with integrated MKLocalSearch triggering.
+    /// - Parameters:
+    ///   - title: Label for the field.
+    ///   - placeholder: Ghost text when empty.
+    ///   - text: Binding to the address string.
+    ///   - isSearching: Whether a search is currently active.
+    ///   - searchResults: List of results to display.
+    ///   - isStart: Optional boolean to differentiate start/end fields.
     private func locationSearchField(
         title: String,
         placeholder: String,

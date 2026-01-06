@@ -7,6 +7,7 @@
 
 import Foundation
 
+/// Represents specific errors that can occur during the GPX creation process.
 enum GPXError: LocalizedError {
     case routeCalculationFailed(String)
     case locationSearchFailed(String)
@@ -50,6 +51,7 @@ enum GPXError: LocalizedError {
     }
 }
 
+/// High-level warnings or notifications for the user that do not necessarily block execution.
 enum GPXWarning: String {
     case noRouteCalculated = "No route calculated yet. Select start and end points first."
     case noLocationSelected = "No location selected. Click on the map or search for a location."

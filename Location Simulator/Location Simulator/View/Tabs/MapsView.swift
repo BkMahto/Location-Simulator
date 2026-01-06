@@ -42,12 +42,16 @@ struct MapsView: View {
         region.center = userCoordinate
     }
 
+    /// Focuses the map on the user's current location.
     private func focusOnUser() {
         guard let userCoordinate = locationManager.currentLocation else { return }
         updateRegion(to: userCoordinate)
     }
 }
 
+/// A manager responsible for handling location permissions and updates.
+///
+/// This class encapsulates `CLLocationManager` logic and publishes the user's current coordinate.
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     @Published var currentLocation: CLLocationCoordinate2D?
@@ -59,6 +63,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         manager.distanceFilter = 1  // Update even for 1 meter movement
     }
 
+    /// Requests location authorization from the user if not already granted and starts location updates.
     func requestLocation() {
         switch manager.authorizationStatus {
         case .notDetermined, .denied, .restricted:
