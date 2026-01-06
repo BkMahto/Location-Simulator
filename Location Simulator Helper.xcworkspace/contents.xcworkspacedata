@@ -2,6 +2,9 @@
 <Workspace
    version = "1.0">
    <FileRef
+      location = "group:LocationHelperCore">
+   </FileRef>
+   <FileRef
       location = "group:GPX Creator/GPX Creator.xcodeproj">
    </FileRef>
    <FileRef
