@@ -7,9 +7,9 @@
 
 import Combine
 import CoreLocation
+import LocationHelperCore
 import MapKit
 import SwiftUI
-import LocationHelperCore
 
 /// The Main Actor isolated ViewModel for managing GPX creation and simulation logic.
 ///
@@ -17,16 +17,16 @@ import LocationHelperCore
 @MainActor
 class GPXCreatorViewModel: NSObject, ObservableObject {
     // MARK: - Published State
-    
+
     /// The core application state including current map region and mode.
     @Published var appState = AppState()
-    
+
     /// State related to location searching and search results.
     @Published var searchState = SearchState()
-    
+
     /// State related to route calculation and GPX export processes.
     @Published var exportState = ExportState()
-    
+
     /// State for handling and displaying errors or warnings to the user.
     @Published var errorState = ErrorState()
 
@@ -73,7 +73,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
         // Request user's current location via shared helper
         locationHelper.requestAuthorization()
-        
+
         // Observe location updates
         locationHelper.$currentLocation
             .compactMap { $0 }
@@ -294,8 +294,8 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     /// This method is asynchronous and updates the `appState.route` upon successful completion.
     func calculateRoute() async {
         guard canCalculateRoute() && validateInputsForAction(),
-              let start = appState.selectedStartLocation,
-              let end = appState.selectedEndLocation
+            let start = appState.selectedStartLocation,
+            let end = appState.selectedEndLocation
         else { return }
 
         exportState.isCalculatingRoute = true
@@ -330,14 +330,14 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
             return nil
         }
 
-        do {
-            let gpxString = try generateRouteGPX(route: route)
-            let filename = createRouteFilename()
-            return (gpxString, filename)
-        } catch {
-            showError(.fileSaveFailed(error.localizedDescription))
-            return nil
-        }
+        let gpxString = GPXHelper.generateRouteGPX(
+            route: route,
+            simulationSpeed: appState.simulationSpeed,
+            startAddress: searchState.startAddress,
+            endAddress: searchState.endAddress
+        )
+        let filename = GPXHelper.createRouteFilename(start: searchState.startAddress, end: searchState.endAddress)
+        return (gpxString, filename)
     }
 
     func prepareWaypointGPX() -> (content: String, filename: String)? {
@@ -351,8 +351,8 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         }
 
         let address = getAddressForCoordinate(point)
-        let gpxString = generateWaypointGPX(coordinate: point, name: address)
-        let filename = createWaypointFilename(for: address)
+        let gpxString = GPXHelper.generateWaypointGPX(coordinate: point, name: address)
+        let filename = GPXHelper.createWaypointFilename(for: address)
         return (gpxString, filename)
     }
 
@@ -450,7 +450,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
                 // If start location is set, bias search towards that region (country-level)
                 let searchRegion = MKCoordinateRegion(
                     center: startLocation,
-                    span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10) // ~1000km radius
+                    span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)  // ~1000km radius
                 )
                 request.region = searchRegion
             } else {
@@ -480,9 +480,9 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         } catch {
             await MainActor.run {
                 let nsError = error as NSError
-                let errorMessage = nsError.domain == "MKErrorDomain" ?
-                "Location search failed. Check your internet connection and try again." :
-                error.localizedDescription
+                let errorMessage =
+                    nsError.domain == "MKErrorDomain"
+                    ? "Location search failed. Check your internet connection and try again." : error.localizedDescription
                 showError(.locationSearchFailed(errorMessage))
                 clearSearchResults(for: searchType)
             }
@@ -550,72 +550,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         geocodeCache[key] = address
     }
 
-    /// Generates a complete GPX XML string for a given route.
-    ///
-    /// This method samples the route points and calculates timestamps based on the selected simulation speed.
-    /// - Parameter route: The route to generate GPX for.
-    /// - Returns: A string containing the GPX XML data.
-    private func generateRouteGPX(route: MKRoute) throws -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.formatOptions = [.withInternetDateTime]
-        var currentTime = Date()
-
-        let coordinates = CoordinateUtils.sampledCoordinates(from: route.polyline, maxPoints: 200)
-
-        let startAddress = searchState.startAddress.isEmpty ? "Start" : searchState.startAddress
-        let endAddress = searchState.endAddress.isEmpty ? "End" : searchState.endAddress
-
-        // Use array for efficient string building with large datasets
-        var gpxLines: [String] = []
-        gpxLines.reserveCapacity(coordinates.count + 10)  // Pre-allocate capacity
-
-        gpxLines.append("<?xml version=\"1.0\"?>")
-        gpxLines.append("<gpx version=\"1.1\" creator=\"GPX Creator • Bandan Kumar Mahto\">")
-        gpxLines.append("    <metadata>")
-        gpxLines.append("        <name>Route from \(startAddress) to \(endAddress)</name>")
-        gpxLines.append("        <time>\(formatter.string(from: currentTime))</time>")
-        gpxLines.append("    </metadata>")
-
-        var previous: CLLocationCoordinate2D?
-        for coord in coordinates {
-            if let prev = previous {
-                let dist = CoordinateUtils.distanceMeters(from: prev, to: coord)
-                let speedMps = appState.simulationSpeed / 3.6
-                let seconds = max(1, Int(dist / speedMps))
-                currentTime.addTimeInterval(TimeInterval(seconds))
-            }
-            previous = coord
-
-            gpxLines.append("    <wpt lat=\"\(coord.latitude)\" lon=\"\(coord.longitude)\">")
-            gpxLines.append("        <time>\(formatter.string(from: currentTime))</time>")
-            gpxLines.append("    </wpt>")
-        }
-
-        gpxLines.append("</gpx>")
-
-        // Join with newlines for efficient string creation
-        return gpxLines.joined(separator: "\n")
-    }
-
-    private func generateWaypointGPX(coordinate: CLLocationCoordinate2D, name: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.formatOptions = [.withInternetDateTime]
-        let timestamp = formatter.string(from: Date())
-
-        return """
-            <?xml version="1.0"?>
-            <gpx version="1.1" creator="GPX Creator • Bandan Kumar Mahto">
-                <wpt lat="\(coordinate.latitude)" lon="\(coordinate.longitude)">
-                    <name>\(name)</name>
-                    <time>\(timestamp)</time>
-                </wpt>
-            </gpx>
-            """
-    }
-
-
     private func calculatePolylineDistance(_ polyline: MKPolyline) -> Double {
         return CoordinateUtils.calculatePolylineDistance(polyline)
     }
@@ -642,7 +576,8 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
 
     private func centerMapBetweenPoints() {
         guard let start = appState.selectedStartLocation,
-              let end = appState.selectedEndLocation else { return }
+            let end = appState.selectedEndLocation
+        else { return }
 
         // Calculate center point between start and end
         let centerLat = (start.latitude + end.latitude) / 2
@@ -679,16 +614,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         let key = type.rawValue
         searchTasks[key]?.cancel()
         searchTasks[key] = nil
-    }
-
-    private func createRouteFilename() -> String {
-        let start = searchState.startAddress.components(separatedBy: ",").first ?? searchState.startAddress
-        let end = searchState.endAddress.components(separatedBy: ",").first ?? searchState.endAddress
-        return "\(start)_to_\(end)".replacingOccurrences(of: " ", with: "_")
-    }
-
-    private func createWaypointFilename(for address: String) -> String {
-        return (address.components(separatedBy: ",").first ?? address).replacingOccurrences(of: " ", with: "_")
     }
 
     private func getAddressForCoordinate(_ coordinate: CLLocationCoordinate2D) -> String {
@@ -750,7 +675,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         errorState.showWarning = true
     }
 }
-
 
 // MARK: - Supporting Types
 
