@@ -7,6 +7,7 @@
 
 import MapKit
 import SwiftUI
+import LocationHelperCore
 
 struct MapsView: View {
     @StateObject private var locationManager = LocationManager()
@@ -51,44 +52,12 @@ struct MapsView: View {
 
 /// A manager responsible for handling location permissions and updates.
 ///
-/// This class encapsulates `CLLocationManager` logic and publishes the user's current coordinate.
-final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-    @Published var currentLocation: CLLocationCoordinate2D?
+/// This class leverages `BaseLocationHelper` from the shared core package.
+final class LocationManager: BaseLocationHelper {
 
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = 1  // Update even for 1 meter movement
-    }
-
-    /// Requests location authorization from the user if not already granted and starts location updates.
+    /// Requests location authorization from the user.
     func requestLocation() {
-        switch manager.authorizationStatus {
-        case .notDetermined, .denied, .restricted:
-            manager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways:
-            manager.startUpdatingLocation()
-            manager.requestLocation()
-        default:
-            break
-        }
-    }
-
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        currentLocation = locations.last?.coordinate
-    }
-
-    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
-        if status == .authorizedWhenInUse || status == .authorizedAlways {
-            manager.startUpdatingLocation()
-            manager.requestLocation()
-        }
-    }
-
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location error:", error.localizedDescription)
+        requestAuthorization()
     }
 }
 

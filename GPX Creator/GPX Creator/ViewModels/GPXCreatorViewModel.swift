@@ -9,6 +9,7 @@ import Combine
 import CoreLocation
 import MapKit
 import SwiftUI
+import LocationHelperCore
 
 /// The Main Actor isolated ViewModel for managing GPX creation and simulation logic.
 ///
@@ -35,10 +36,11 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     private let locationSearch = MKLocalSearch.self
     private var geocodeCache = [CoordinateKey: String]()
     private let geocodeCacheLimit = 50
-    private let locationManager = CLLocationManager()
+    private let locationHelper = BaseLocationHelper()
+
+    private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Supporting Types
-
     private struct CoordinateKey: Hashable {
         let latitude: Double
         let longitude: Double
@@ -69,24 +71,24 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
             span: MKCoordinateSpan(latitudeDelta: 0.15, longitudeDelta: 0.15)
         )
 
-        // Request user's current location
-        requestUserLocation()
+        // Request user's current location via shared helper
+        locationHelper.requestAuthorization()
+        
+        // Observe location updates
+        locationHelper.$currentLocation
+            .compactMap { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] coordinate in
+                self?.handleLocationUpdate(coordinate)
+            }
+            .store(in: &cancellables)
     }
 
-    /// Requests the user's current location authorization and updates the map region if granted.
-    private func requestUserLocation() {
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.delegate = self
-
-        let status = locationManager.authorizationStatus
-        switch status {
-        case .notDetermined, .denied, .restricted:
-            locationManager.requestAlwaysAuthorization()
-        case .authorized, .authorizedAlways:
-            locationManager.requestLocation()
-        @unknown default:
-            break
+    private func handleLocationUpdate(_ coordinate: CLLocationCoordinate2D) {
+        guard appState.selectedStartLocation == nil && appState.selectedEndLocation == nil else {
+            return
         }
+        centerMapOnCoordinate(coordinate)
     }
 
     // MARK: - Public Methods
@@ -559,7 +561,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         formatter.formatOptions = [.withInternetDateTime]
         var currentTime = Date()
 
-        let coordinates = sampledCoordinates(from: route.polyline, maxPoints: 200)
+        let coordinates = CoordinateUtils.sampledCoordinates(from: route.polyline, maxPoints: 200)
 
         let startAddress = searchState.startAddress.isEmpty ? "Start" : searchState.startAddress
         let endAddress = searchState.endAddress.isEmpty ? "End" : searchState.endAddress
@@ -578,7 +580,7 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
         var previous: CLLocationCoordinate2D?
         for coord in coordinates {
             if let prev = previous {
-                let dist = distanceMeters(from: prev, to: coord)
+                let dist = CoordinateUtils.distanceMeters(from: prev, to: coord)
                 let speedMps = appState.simulationSpeed / 3.6
                 let seconds = max(1, Int(dist / speedMps))
                 currentTime.addTimeInterval(TimeInterval(seconds))
@@ -613,79 +615,13 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
             """
     }
 
-    private func sampledCoordinates(from polyline: MKPolyline, maxPoints: Int) -> [CLLocationCoordinate2D] {
-        let count = polyline.pointCount
-        guard count > 0 else { return [] }
-
-        let points = polyline.points()
-
-        // For small routes, return all points
-        if count <= maxPoints {
-            var coords: [CLLocationCoordinate2D] = []
-            coords.reserveCapacity(count)
-            for i in 0..<count {
-                coords.append(points[i].coordinate)
-            }
-            return coords
-        }
-
-        // For large routes, use distance-based sampling to maintain route accuracy
-        var coords: [CLLocationCoordinate2D] = []
-        coords.reserveCapacity(maxPoints)
-
-        // Always include the first point
-        coords.append(points[0].coordinate)
-
-        let totalDistance = calculatePolylineDistance(polyline)
-        let targetSegmentDistance = totalDistance / Double(maxPoints - 1)  // -1 to account for start and end
-
-        var currentDistance: Double = 0
-
-        for i in 1..<count {
-            let segmentDistance = distanceMeters(from: points[i - 1].coordinate, to: points[i].coordinate)
-            currentDistance += segmentDistance
-
-            // Include point if we've traveled far enough or if it's the last point
-            if currentDistance >= targetSegmentDistance || i == count - 1 {
-                // Avoid duplicates
-                let currentCoord = points[i].coordinate
-                if coords.last?.latitude != currentCoord.latitude || coords.last?.longitude != currentCoord.longitude {
-                    coords.append(currentCoord)
-                }
-                currentDistance = 0
-
-                // Break if we've reached our target count (but always include the last point)
-                if coords.count >= maxPoints - 1 && i < count - 1 {
-                    break
-                }
-            }
-        }
-
-        // Always ensure the last point is included
-        let lastCoord = points[count - 1].coordinate
-        if coords.last?.latitude != lastCoord.latitude || coords.last?.longitude != lastCoord.longitude {
-            coords.append(lastCoord)
-        }
-
-        return coords
-    }
 
     private func calculatePolylineDistance(_ polyline: MKPolyline) -> Double {
-        let points = polyline.points()
-        let count = polyline.pointCount
-        var totalDistance: Double = 0
-
-        for i in 1..<count {
-            totalDistance += distanceMeters(from: points[i - 1].coordinate, to: points[i].coordinate)
-        }
-
-        return totalDistance
+        return CoordinateUtils.calculatePolylineDistance(polyline)
     }
 
     private func distanceMeters(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) -> Double {
-        let locA = CLLocation(latitude: a.latitude, longitude: a.longitude)
-        let locB = CLLocation(latitude: b.latitude, longitude: b.longitude)
-        return locA.distance(from: locB)
+        return CoordinateUtils.distanceMeters(from: a, to: b)
     }
 
     private func updateModeAfterSelection() {
@@ -815,37 +751,6 @@ class GPXCreatorViewModel: NSObject, ObservableObject {
     }
 }
 
-// MARK: - CLLocationManagerDelegate
-extension GPXCreatorViewModel: @MainActor CLLocationManagerDelegate {
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        guard CLLocationCoordinate2DIsValid(location.coordinate) else { return }
-
-        // Only update region if no points have been selected yet (initial setup)
-        // Once user starts selecting points, don't override with current location
-        guard appState.selectedStartLocation == nil && appState.selectedEndLocation == nil else {
-            return
-        }
-
-        let coordinate = location.coordinate
-        let region = MKCoordinateRegion(
-            center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-        )
-        self.appState.region = region
-    }
-
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location request failed: \(error.localizedDescription)")
-    }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        let status = manager.authorizationStatus
-        if status == .authorized || status == .authorizedAlways {
-            manager.requestLocation()
-        }
-    }
-}
 
 // MARK: - Supporting Types
 
